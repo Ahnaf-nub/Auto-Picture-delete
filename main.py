@@ -1,37 +1,46 @@
 import os
 import time
-from plyer import notification
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+from win10toast_click import ToastNotifier
+
 screenshot_dir = "C:/Users/abidu/OneDrive/Pictures/Screenshots"
 
-# Function to send push notification
-def send_notification(file_path):
-    notification.notify(
-        title="Screenshot Detected",
-        message=f"Click here to delete: {file_path}",
-        timeout=10,
-        app_name="Screenshot Manager"
-    )
+class ScreenshotHandler(FileSystemEventHandler):
+    def __init__(self):
+        self.toaster = ToastNotifier()
 
-# Function to monitor the directory for new files
-def monitor_directory(directory):
-    print(f"Monitoring directory: {directory}")
-    known_files = set(os.listdir(directory))
-    
-    while True:
-        time.sleep(2)  # Check every 2 seconds
-        current_files = set(os.listdir(directory))
-        new_files = current_files - known_files
-        
-        for new_file in new_files:
-            file_path = os.path.join(directory, new_file)
-            print(f"New file detected: {file_path}")
-            send_notification(file_path)
-            user_input = input(f"Do you want to delete the file {file_path}? (yes/no): ").strip().lower()
-            if user_input == "yes":
-                os.remove(file_path)
-                print(f"{file_path} has been deleted.")
-        
-        known_files = current_files
+    def on_created(self, event):
+        # When a new screenshot is created, trigger this function
+        if not event.is_directory:
+            file_path = event.src_path
+            print(f"New screenshot detected: {file_path}")
+            self.send_notification(file_path)
+
+    def send_notification(self, file_path):
+        self.toaster.show_toast(
+            "Screenshot Taken",
+            "Click this notification to delete the screenshot",
+            icon_path=None,
+            duration=10,
+            callback_on_click=lambda: self.delete_file(file_path)
+        )
+
+    def delete_file(self, file_path):
+        os.remove(file_path)
+
+def monitor_screenshots(directory):
+    event_handler = ScreenshotHandler()
+    observer = Observer()
+    observer.schedule(event_handler, path=directory, recursive=False)
+    observer.start()
+
+    try:
+        while True:
+            time.sleep(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
 
 if __name__ == "__main__":
-    monitor_directory(screenshot_dir)
+    monitor_screenshots(screenshot_dir)
